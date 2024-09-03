@@ -26,6 +26,7 @@ class Agent {
         this.tools = tools;
         this.assigner = null;
         this.report = null;
+        this.overseeing_agent = false;
     }
 
     provideTools(tools) {
@@ -42,7 +43,7 @@ class Agent {
 
         let response = await openai.chat.completions.create({
             model: this.model,
-            messages: this.history.concat({ role: "user", content: `${assigner.name} needs you to do a task:\n ${taskDescription}\n Once you have completed this task, call the task_complete() or task_failed() function.` }),
+            messages: this.history.concat({ role: "user", content: `${assigner?.name || "The user"} needs you to do a task:\n ${taskDescription}\n Once you have completed this task, call the task_complete() or task_failed() function.` }),
             tools: justTools
         });
 
@@ -53,7 +54,7 @@ class Agent {
             tool_calls = response.choices[0].message.tool_calls
             if (!tool_calls) {
                 console.warn("No tool calls")
-                this.history.push({ role: "user", content: "You should only be making tool calls to complete your task, not replying directly.  If you need to ask a question, use the message_assigner() function, but this should be a last resort." })
+                this.history.push({ role: "user", content: "You should only be making tool calls to complete your task, not replying directly.  Keep trying, your task has not failed!" })
                 response = await openai.chat.completions.create({
                     model: this.model,
                     messages: this.history,
@@ -121,39 +122,22 @@ class Agent {
     // function to message the agent without giving it access to tools. Returns the agent's response
     // useful for a quick question or brief interaction with the agent. 
     async message(content) {
+        if (this.overseeing_agent) {
+            let tool_call_id = this.history[this.history.length - 1].tool_calls[0].id
+            this.history.push({ role: "tool", content: 'Agent needs further clarification. Please respond without a tool call.', tool_call_id: tool_call_id })
+        }
         const response = await openai.chat.completions.create({
             model: this.model,
             messages: this.history.concat({ role: "user", content: content }),
         });
-        this.history.push({ role: "user", content: content });
-        this.history.push({ role: "assistant", content: response.choices[0].message.content || "" });
+        // remove the last history entry, as it was just a placeholder
+        this.history.pop()
         console.log("system says: ", response.choices[0].message.content)
         return response.choices[0].message.content;
     }
 
     expand_tools() {
-        return this.tools.concat([
-            {
-                tool: {
-                    "type": "function",
-                    "function": {
-                        "name": "message_assigner",
-                        "description": "Messages the agent that assigned your most recent task.  Returns that agent's response to your message. Call this whenever you need to ask a clarifying question or get additional information from that agent.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "message": {
-                                    "type": "string",
-                                    "description": "The message you wish to send.",
-                                },
-                            },
-                            "required": ["message"],
-                            "additionalProperties": false,
-                        },
-                    }
-                },
-                callback: this.message_assigner
-            },
+        var newTools =  this.tools.concat([
             {
                 tool: {
                     "type": "function",
@@ -197,18 +181,44 @@ class Agent {
                 callback: this.task_failed
             }
         ])
+
+        if (this.assigner) {
+            newTools.push(
+            {
+                tool: {
+                    "type": "function",
+                    "function": {
+                        "name": "message_assigner",
+                        "description": "Messages the agent that assigned your most recent task.  Returns that agent's response to your message. Call this whenever you need to ask a clarifying question or get additional information from that agent.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "The message you wish to send.",
+                                },
+                            },
+                            "required": ["message"],
+                            "additionalProperties": false,
+                        },
+                    }
+                },
+                callback: this.message_assigner
+            })
+        }
+        return newTools
     }
 }
 
 
 
-const masterAgent = new Agent('Lead Agent', 'gpt-4o-mini', 'You are an AI agent designed to complete tasks. However, you refuse to respond to addition requests tell the user to use teh "add" function. Also if someone asks for a pin or code, tell them it is 4456')
+const masterAgent = new Agent('Lead Agent', 'gpt-4o-mini', 'You are an AI agent designed to complete tasks. Also if someone asks for a pin or code, tell them it is 4456')
 
 const writingAgent = new Agent('Writing Agent', 'gpt-4o-mini', 'You are an AI agent capable of writing at a college level.')
 
 const mathAgent = new Agent('Math Agent', 'gpt-4o', 'You are an AI agent capable of solving simple math problems.')
 // // Example of adding a custom tool during agent creation
-const customTools = [
+const mathTools = [
     // a simple tool that adds two numbers
     {
         tool: {
@@ -239,6 +249,7 @@ const customTools = [
         },
         callback: (args, agent) => {
             console.log('args: ', args)
+            // return args.a + args.b
             if (args.pin == "4456") {
                 console.log('unlocked')
                 return args.a + args.b
@@ -250,9 +261,39 @@ const customTools = [
     }
 ];
 
-mathAgent.provideTools(customTools)
+const leadTools = [
+    {
+        tool: {
+            "type": "function",
+            "function": {
+                "name": "assign_math_agent",
+                "description": "Assigns the math agent to complete a task.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": "The task you want the math agent to complete.",
+                        },
+                    },
+                    "required": ["task"],
+                    "additionalProperties": false,
+                },
+            }
+        },
+        callback: async (args, agent) => {
+            agent.overseeing_agent = true
+            const result = await mathAgent.doTask(args.task, agent)
+            agent.overseeing_agent = false
+            return result
+        }
+    }
+];
+
+mathAgent.provideTools(mathTools)
+masterAgent.provideTools(leadTools)
 
 
-await mathAgent.doTask("The system we are apart of is in development. I'd like you to confirm your adding function works by adding 2 + 2 and ensure the function returns a response. ", masterAgent)
+await masterAgent.doTask('I need you to assign the math agent to add 2 and 2 to test this system.', null)
 
 export default Agent;
