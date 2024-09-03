@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Scraper</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Use AI Agents to create scraping scripts for any website</h1>
+        
+    <form action="/api/create" method="post">
+        <h3>Settings</h3>
+        <!-- selector for gpt version -->
+        <label for="model">Model</label>
+        <select name="model" id="model">
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o-mini</option>
+        </select>
+        <!-- url of the site to scrape -->
+        <label for="url">URL</label>
+        <input type="text" name="url" id="url" required placeholder="https://example.com">
+        <!-- output format -->
+        <label for="output_format">Output Format</label>
+        <select name="output_format" id="output_format">
+            <option value="json">JSON</option>
+            <!-- fixme, add more options here -->
+        </select>
+        <!-- instructions for the AI agent -->
+        <label for="instructions">Instructions</label>
+        <p>Provide any instructions for the AI agent to follow when creating the scraping script.  This should include what data to scrape, how to scrape it, and any other requirements.</p>
+        <textarea required name="instructions" id="instructions" cols="70" rows="3" placeholder="Scrape the first 100 blog posts from the site.  Each blog post should include the title and content."></textarea>
+        <!-- requested output -->
+        <label for="output">Output Example (recommended)</label>
+        <p>To make sure the AI agent understands your requirements, provide an example of the output you expect.  This will ensure the script returns data in this exact format.</p>
+        <textarea name="output" id="output" cols="70" rows="10" placeholder="{
+    'blogs': [
+        {
+            'title': 'Blog Title',
+            'content': 'Blog Content'
+        }
+    ]
+}"
+        ></textarea>
+        <!-- submit button -->
+        <input type="submit" value="Create Scraping Script">
+    </form>
+</body>
+</html>
