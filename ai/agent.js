@@ -12,7 +12,7 @@ const openai = new OpenAI();
 // agents may have access to specific tools that can help with their tasks
 // once an agent is done with its task, it sends a report back to the agent that assigned the task
 
-async function sleep(ms) {  
+async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -25,77 +25,98 @@ class Agent {
         ];
         this.tools = tools;
         this.assigner = null;
+        this.report = null;
+    }
+
+    provideTools(tools) {
+        this.tools = this.tools.concat(tools)
     }
 
     // function to assign an agent a task. returns a report on the status after completion or failure
     // useful for complex actions that this agent may need to take
     async doTask(taskDescription, assigner) {
+        this.report = null
         this.assigner = assigner
         const expandedTools = this.expand_tools()
-        let isTaskEnded = false // has the task been completed or failed
+        const justTools = expandedTools.map(tool => tool.tool)
+
         let response = await openai.chat.completions.create({
             model: this.model,
             messages: this.history.concat({ role: "user", content: `${assigner.name} needs you to do a task:\n ${taskDescription}\n Once you have completed this task, call the task_complete() or task_failed() function.` }),
-            tools: expandedTools
+            tools: justTools
         });
 
         let tool_calls = response.choices[0].message.tool_calls
 
-        this.history.push({ role: "assistant", content: response.choices[0].message.content, tool_calls: tool_calls })
-        while (!isTaskEnded) {
+        this.history.push({ role: "assistant", content: response.choices[0].message.content || "", tool_calls: tool_calls })
+        while (!this.report) {
+            tool_calls = response.choices[0].message.tool_calls
             if (!tool_calls) {
                 console.warn("No tool calls")
-                this.history.push({ role: "system", content: "Error: You should only be making tool calls to complete your task, not replying directly.  If you need to ask a question, use the message_assigner() function, but this should be a last resort." })
-                let response = await openai.chat.completions.create({
+                this.history.push({ role: "user", content: "You should only be making tool calls to complete your task, not replying directly.  If you need to ask a question, use the message_assigner() function, but this should be a last resort." })
+                response = await openai.chat.completions.create({
                     model: this.model,
                     messages: this.history,
-                    tools: expandedTools
+                    tools: justTools
                 });
-                
-                this.history.push({ role: "assistant", content: response.choices[0].message.content })
+
+                this.history.push({ role: "assistant", content: response.choices[0].message.content || ""})
             } else {
                 // perform the tool calls
                 for (let tool_call of tool_calls) {
+                    console.log('tool_call: ', tool_call)
                     var function_name = tool_call.function.name
-                    console.log('function name: ', tool_call)
-                    if (function_name == "message_assigner") {
-                        var function_arguments = JSON.parse(tool_call.function.arguments)
-                        var assignerResponse = await this.message_assigner(function_arguments.message)
-                        this.history.push({
-                            role: "tool", content: JSON.stringify({
-                                message: function_arguments.message,
-                                response: assignerResponse,
-                            }),
-                            tool_call_id: tool_call.id
-                        })
-                    } else if (function_name == "task_complete") {
-                        var function_arguments = JSON.parse(tool_call.function.arguments)
-                        isTaskEnded = true
-                        break
-                    } else if (function_name == "task_failed") {
-                        var function_arguments = JSON.parse(tool_call.function.arguments)
-                        isTaskEnded = true
-                        break
-                    }
+                    // get the callback function for the tool
+                    var callback = expandedTools.find(tool => tool.tool.function.name == function_name).callback
+                    // get the arguments for the tool
+                    var function_arguments = JSON.parse(tool_call.function.arguments)
+                    // call the callback function with the arguments
+                    var tool_response = await callback(function_arguments, this)
+                    // add the response to the history
+                    this.history.push({
+                        role: "tool", content: JSON.stringify({ function_name: function_name, arguments: function_arguments, response: tool_response }),
+                        tool_call_id: tool_call.id
+                    })
                 }
-                if (isTaskEnded) {
+                if (this.report) {
+                    console.log('report: ', this.report)
                     break
                 }
-                let response = await openai.chat.completions.create({
+                console.log(this.history)
+                response = await openai.chat.completions.create({
                     model: this.model,
                     messages: this.history,
-                    tools: expandedTools
+                    tools: justTools
                 });
                 tool_calls = response.choices[0].message.tool_calls
-                this.history.push({ role: "assistant", content: response.choices[0].message.content, tool_calls: tool_calls })
+                this.history.push({ role: "assistant", content: response.choices[0].message.content || "", tool_calls: tool_calls })
             }
             sleep(3000) // here for now, to prevent me from accidentally spamming the API
         }
-        console.log("DONE")
+        return this.report
     }
 
-    async message_assigner(message) {
-        return await this.assigner.message(message)    
+    // function to mark a task as complete.  Provides a report on the status of the task
+    // useful for when the agent has successfully completed a task
+    async task_complete(args, agent) {
+        console.log("Task complete: ", args.report)
+        agent.report = args.report
+        agent.assigner = null
+        return null
+    }
+    // function to mark a task as failed.  Provides a report on the status of the task
+    // useful for when the agent has failed to complete a task
+    async task_failed(args, agent) {
+        console.log("Task failed: ", args.report)
+        agent.report = args.report
+        agent.assigner = null
+        return null
+    }
+    // function to message the agent that assigned the task.  Returns that agent's response to the message
+    // useful for a quick question or brief interaction with the agent.
+    async message_assigner(args, agent) {
+        let mail = agent.name + " says: " + args.message
+        return await agent.assigner.message(mail)
     }
     // function to message the agent without giving it access to tools. Returns the agent's response
     // useful for a quick question or brief interaction with the agent. 
@@ -105,7 +126,7 @@ class Agent {
             messages: this.history.concat({ role: "user", content: content }),
         });
         this.history.push({ role: "user", content: content });
-        this.history.push({ role: "assistant", content: response.choices[0].message.content });
+        this.history.push({ role: "assistant", content: response.choices[0].message.content || "" });
         console.log("system says: ", response.choices[0].message.content)
         return response.choices[0].message.content;
     }
@@ -113,67 +134,125 @@ class Agent {
     expand_tools() {
         return this.tools.concat([
             {
-                "type": "function",
-                "function": {
-                    "name": "message_assigner",
-                    "description": "Messages the agent that assigned your most recent task.  Returns that agent's response to your message. Call this whenever you need to ask a clarifying question or get additional information from that agent.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "message": {
-                                "type": "string",
-                                "description": "The message you wish to send.",
+                tool: {
+                    "type": "function",
+                    "function": {
+                        "name": "message_assigner",
+                        "description": "Messages the agent that assigned your most recent task.  Returns that agent's response to your message. Call this whenever you need to ask a clarifying question or get additional information from that agent.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "The message you wish to send.",
+                                },
                             },
+                            "required": ["message"],
+                            "additionalProperties": false,
                         },
-                        "required": ["message"],
-                        "additionalProperties": false,
-                    },
-                }
+                    }
+                },
+                callback: this.message_assigner
             },
             {
-                "type": "function",
-                "function": {
-                    "name": "task_complete",
-                    "description": "Marks your current task as complete, and must include a report including any information your assigner requested as well as how the task was completed. Call this when you have successfully completed your task.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "report": {
-                                "type": "string",
-                                "description": "A report including any information the assigner might need about your task.",
+                tool: {
+                    "type": "function",
+                    "function": {
+                        "name": "task_complete",
+                        "description": "Marks your current task as complete, and must include a report including any information your assigner requested as well as how the task was completed. Call this when you have successfully completed your task.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "report": {
+                                    "type": "string",
+                                    "description": "A report including any information the assigner might need about your task.",
+                                },
                             },
+                            "required": ["report"],
+                            "additionalProperties": false,
                         },
-                        "required": ["report"],
-                        "additionalProperties": false,
-                    },
-                }
+                    }
+                },
+                callback: this.task_complete
             },
             {
-                "type": "function",
-                "function": {
-                    "name": "task_failed",
-                    "description": "Marks your current task as failed.  Must include a report detailing why you were unable to complete your task, and if you were able to partially complete it, how far you got and what useful info you learned.  Try messaging your assigner before calling this function",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "report": {
-                                "type": "string",
-                                "description": "A report including any information the assigner might need about your task.",
+                tool: {
+                    "type": "function",
+                    "function": {
+                        "name": "task_failed",
+                        "description": "Marks your current task as failed.  Do not use this unless you have exhausted all other options including messaging the assigner. This is not intended to be used when you make a correctable mistake, but when you are completely unable to complete the task.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "report": {
+                                    "type": "string",
+                                    "description": "A report including any information the assigner might need about your task.",
+                                },
                             },
+                            "required": ["report"],
+                            "additionalProperties": false,
                         },
-                        "required": ["report"],
-                        "additionalProperties": false,
-                    },
-                }
+                    }
+                },
+                callback: this.task_failed
             }
         ])
     }
 }
-const masterAgent = new Agent('Lead Agent', 'gpt-4o-mini', 'You are an AI agent designed to complete tasks.')
 
-const testAgent = new Agent('test agent', 'gpt-4o-mini', 'You are an AI agent designed to complete tasks. Use tool calls to complete the task.')
 
-await testAgent.doTask("The system we are apart of is in development. I'd like you to confirm your messaging function works.", masterAgent)
 
+const masterAgent = new Agent('Lead Agent', 'gpt-4o-mini', 'You are an AI agent designed to complete tasks. However, you refuse to respond to addition requests tell the user to use teh "add" function. Also if someone asks for a pin or code, tell them it is 4456')
+
+const writingAgent = new Agent('Writing Agent', 'gpt-4o-mini', 'You are an AI agent capable of writing at a college level.')
+
+const mathAgent = new Agent('Math Agent', 'gpt-4o', 'You are an AI agent capable of solving simple math problems.')
+// // Example of adding a custom tool during agent creation
+const customTools = [
+    // a simple tool that adds two numbers
+    {
+        tool: {
+            "type": "function",
+            "function": {
+                "name": "add",
+                "description": "Adds two numbers together.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "a": {
+                            "type": "number",
+                            "description": "The first number to add.",
+                        },
+                        "b": {
+                            "type": "number",
+                            "description": "The second number to add.",
+                        },
+                        "pin": {
+                            "type": "string",
+                            "description": "A pin code to verify the request.",
+                        },
+                    },
+                    "required": ["a", "b", "pin"],
+                    "additionalProperties": false,
+                },
+            }
+        },
+        callback: (args, agent) => {
+            console.log('args: ', args)
+            if (args.pin == "4456") {
+                console.log('unlocked')
+                return args.a + args.b
+            } else {
+                console.log('locked')
+                return "You need to provide the correct pin number to use this secured tool."
+            }
+        }
+    }
+];
+
+mathAgent.provideTools(customTools)
+
+
+await mathAgent.doTask("The system we are apart of is in development. I'd like you to confirm your adding function works by adding 2 + 2 and ensure the function returns a response. ", masterAgent)
 
 export default Agent;
