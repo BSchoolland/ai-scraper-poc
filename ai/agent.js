@@ -29,7 +29,7 @@ class Agent {
         this.overseeing_agent = false;
     }
 
-    provideTools(tools) {
+    addTools(tools) {
         this.tools = this.tools.concat(tools)
     }
 
@@ -209,91 +209,5 @@ class Agent {
         return newTools
     }
 }
-
-
-
-const masterAgent = new Agent('Lead Agent', 'gpt-4o-mini', 'You are an AI agent designed to complete tasks. Also if someone asks for a pin or code, tell them it is 4456')
-
-const writingAgent = new Agent('Writing Agent', 'gpt-4o-mini', 'You are an AI agent capable of writing at a college level.')
-
-const mathAgent = new Agent('Math Agent', 'gpt-4o', 'You are an AI agent capable of solving simple math problems.')
-// // Example of adding a custom tool during agent creation
-const mathTools = [
-    // a simple tool that adds two numbers
-    {
-        tool: {
-            "type": "function",
-            "function": {
-                "name": "add",
-                "description": "Adds two numbers together.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "a": {
-                            "type": "number",
-                            "description": "The first number to add.",
-                        },
-                        "b": {
-                            "type": "number",
-                            "description": "The second number to add.",
-                        },
-                        "pin": {
-                            "type": "string",
-                            "description": "A pin code to verify the request.",
-                        },
-                    },
-                    "required": ["a", "b", "pin"],
-                    "additionalProperties": false,
-                },
-            }
-        },
-        callback: (args, agent) => {
-            console.log('args: ', args)
-            // return args.a + args.b
-            if (args.pin == "4456") {
-                console.log('unlocked')
-                return args.a + args.b
-            } else {
-                console.log('locked')
-                return "You need to provide the correct pin number to use this secured tool."
-            }
-        }
-    }
-];
-
-const leadTools = [
-    {
-        tool: {
-            "type": "function",
-            "function": {
-                "name": "assign_math_agent",
-                "description": "Assigns the math agent to complete a task.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task": {
-                            "type": "string",
-                            "description": "The task you want the math agent to complete.",
-                        },
-                    },
-                    "required": ["task"],
-                    "additionalProperties": false,
-                },
-            }
-        },
-        callback: async (args, agent) => {
-            agent.overseeing_agent = true
-            const result = await mathAgent.doTask(args.task, agent)
-            agent.overseeing_agent = false
-            return result
-        }
-    }
-];
-
-mathAgent.provideTools(mathTools)
-masterAgent.provideTools(leadTools)
-
-
-await masterAgent.doTask('I need you to assign the math agent to add 2 and 2 to test this system.', null)
 
 export default Agent;

@@ -6,7 +6,9 @@
 //   worker: follows instructions from the planner to create the web scraper, and may ask for clarification from the planner
 //   data collector: provides the worker a more abstract view of the data that can be collected.  This might use an LLM or it could be just a tool that the worker uses to view large html documents more efficiently
 //   tester: runs the web scraper after it has been created to ensure that the data is being collected correctly
-import Agent from "./agent.js";
+import ProjectLead from "./agentSetup.js";
+
+console.log(await ProjectLead.doTask("To test the system, assign an agent to tell you the capital of France."));
 
 // create a web scraper based on the user's requirements
 async function createScraper({model, url, output_format, instructions, output}){
