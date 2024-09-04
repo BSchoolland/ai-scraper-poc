@@ -8,7 +8,7 @@
 //   tester: runs the web scraper after it has been created to ensure that the data is being collected correctly
 import ProjectLead from "./agentSetup.js";
 
-console.log(await ProjectLead.doTask("To test the system, assign an agent to tell you the capital of France."));
+console.log(await ProjectLead.doTask("Find an interesting piece of recent news in: politics, sports, and technology.  Then, su up these 3 articles in a few sentences each."));
 
 // create a web scraper based on the user's requirements
 async function createScraper({model, url, output_format, instructions, output}){

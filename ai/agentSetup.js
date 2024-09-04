@@ -1,8 +1,8 @@
 import Agent from "./agent.js";
 
-const ProjectLead = new Agent('Project Lead', 'gpt-4o-mini', 'You are a capable AI system that leads a team of agents to create a web scraping script based on the given requirements.  Your job is to create a comprehensive plan for the project and assign tasks to the other agents.');
+const ProjectLead = new Agent('Project Lead', 'gpt-4o-mini', 'You are a capable AI system that leads a team of agents based on the given requirements.  Your job is to create a comprehensive plan for the project, assign tasks to the other agents, and then once the project is complete, review the results and send them to the user.');
 
-const BrowserAgent = new Agent('Browser Agent', 'gpt-4o-mini', 'You are an AI agent that can navigate the web and interact with web pages.  Your specialty is in following instructions to gather information on the structure of a website and what paths to take to get to the data you need.  After completing your task, you should first call the create_log_of_actions() function to provide a record of your actions, then call the complete_task() function to signal that you have finished.');
+const BrowserAgent = new Agent('Browser Agent', 'gpt-4o-mini', 'You are an AI agent that can navigate the web and interact with web pages.  Use the provided tools to gather the requested information and report back to your assigner.');
 
 const ScraperAgent = new Agent('Scraper Agent', 'gpt-4o-mini', 'You are a web scraping AI agent that can configure a web scraper to collect data from a website.  You should be given clear instructions on the URL to scrape and the css selectors to target.  You focus on creating a scraper that is able to generalize to new pages on the same website.');
 
@@ -91,8 +91,25 @@ const ProjectLeadTools = [
 
 ProjectLead.addTools(ProjectLeadTools);
 
+import BrowserUtilities from './browserUtilities.js'; // an object with utility functions for the browser agent
 
-// import browserUtilities from './browserUtilities.js'; // an object with utility functions for the browser agent
+const browserUtilities = new BrowserUtilities();
+await browserUtilities.init();
+
+async function evaluate(args){
+    console.log('evaluating function:', args.function);
+    const func = new Function('return ' + args.function)();
+    return await browserUtilities.evaluate(func);
+}
+
+async function goTo(args){
+    console.log('going to:', args.url);
+    return await browserUtilities.goTo(args.url);
+}
+
+async function getFullHTML(){
+    return await browserUtilities.getFullHTML();
+}
 
 const BrowserAgentTools = [
     // {
@@ -109,61 +126,69 @@ const BrowserAgentTools = [
     //             },
     //         }
     //     },
-    //     callback: browserUtilities.createLogOfActions
+    //     callback: BrowserUtilities.createLogOfActions
     // },
-    // {
-    //     tool: {
-    //         "type": "function",
-    //         "function": {
-    //             "name": "go_to_url",
-    //             "description": "Navigates to the given URL in the browser. Does not return the full HTML until you call the get_html() function.",
-    //             "parameters": {
-    //                 "type": "object",
-    //                 "properties": {
-    //                     "url": {
-    //                         "type": "string",
-    //                         "description": "The URL you want to navigate to.",
-    //                     },
-    //                 },
-    //                 "required": ["url"],
-    //                 "additionalProperties": false,
-    //             },
-    //         }
-    //     },
-    //     callback: browserUtilities.goToUrl
-    // },
-    // {
-    //     tool: {
-    //         "type": "function",
-    //         "function": {
-    //             "name": "get_full_html",
-    //             "description": "Returns the full HTML of the current page you are on, allowing for in depth use of css selectors.",
-    //             "parameters": {
-    //                 "type": "object",
-    //                 "properties": {},
-    //                 "required": [],
-    //                 "additionalProperties": false,
-    //             },
-    //         }
-    //     },
-    //     callback: browserUtilities.getHtml
-    // },
-    // {
-    //     tool: {
-    //         "type": "function",
-    //         "function": {
-    //             "name": "get_page_text",
-    //             "description": "Returns the text content of the current page you are on. Useful for quickly determining if you are on the correct page.",
-    //             "parameters": {
-    //                 "type": "object",
-    //                 "properties": {},
-    //                 "required": [],
-    //                 "additionalProperties": false,
-    //             },
-    //         }
-    //     },
-    //     callback: browserUtilities.getPageText
-    // },
+    {
+        tool: {
+            "type": "function",
+            "function": {
+                "name": "goTo",
+                "description": "Navigates to the given URL in the browser. Does not return the full HTML until you call the get_html() function.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL you want to navigate to.",
+                        },
+                    },
+                    "required": ["url"],
+                    "additionalProperties": false,
+                },
+            }
+        },
+        callback: goTo
+    },
+    {
+        tool: {
+            "type": "function",
+            "function": {
+                "name": "getFullHTML",
+                "description": "Returns the full HTML of the current page you are on, allowing for in depth use of css selectors.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": false,
+                },
+            }
+        },
+        callback: getFullHTML
+    },
+    {
+        tool: {
+            "type": "function",
+            "function": {
+                "name": "evaluate",
+                "description": "Evaluates the given JavaScript function in the context of the current page and returns the result.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "function": {
+                            "type": "string",
+                            "description": `The JavaScript function you want to evaluate, for example: 
+() => {
+    return document.querySelector('title').innerText;
+} `,
+                        },
+                    },
+                    "required": ["function"],
+                    "additionalProperties": false,
+                },
+            }
+        },
+        callback: evaluate
+    },
     // {
     //     tool: {
     //         "type": "function",
@@ -183,28 +208,7 @@ const BrowserAgentTools = [
     //             },
     //         }
     //     },
-    //     callback: browserUtilities.clickElement
-    // },
-    // {
-    //     tool: {
-    //         "type": "function",
-    //         "function": {
-    //             "name": "extract_text",
-    //             "description": "Extracts the text content of the element with the given CSS selector on the current page.",
-    //             "parameters": {
-    //                 "type": "object",
-    //                 "properties": {
-    //                     "selector": {
-    //                         "type": "string",
-    //                         "description": "The CSS selector of the element you want to extract text from.",
-    //                     },
-    //                 },
-    //                 "required": ["selector"],
-    //                 "additionalProperties": false,
-    //             },
-    //         }
-    //     },
-    //     callback: browserUtilities.extractText
+    //     callback: BrowserUtilities.clickElement
     // }
 ];
 

@@ -65,7 +65,6 @@ class Agent {
             } else {
                 // perform the tool calls
                 for (let tool_call of tool_calls) {
-                    console.log('tool_call: ', tool_call)
                     var function_name = tool_call.function.name
                     // get the callback function for the tool
                     var callback = expandedTools.find(tool => tool.tool.function.name == function_name).callback
@@ -80,7 +79,6 @@ class Agent {
                     })
                 }
                 if (this.report) {
-                    console.log('report: ', this.report)
                     break
                 }
                 console.log(this.history)
@@ -123,8 +121,14 @@ class Agent {
     // useful for a quick question or brief interaction with the agent. 
     async message(content) {
         if (this.overseeing_agent) {
-            let tool_call_id = this.history[this.history.length - 1].tool_calls[0].id
-            this.history.push({ role: "tool", content: 'Agent needs further clarification. Please respond without a tool call.', tool_call_id: tool_call_id })
+            let lastHistoryEntry = this.history[this.history.length - 1];
+            lastHistoryEntry.tool_calls.forEach(toolCall => {
+                this.history.push({
+                    role: "tool",
+                    content: 'Agent needs further clarification. Please respond without a tool call.',
+                    tool_call_id: toolCall.id
+                });
+            });
         }
         const response = await openai.chat.completions.create({
             model: this.model,
@@ -132,7 +136,6 @@ class Agent {
         });
         // remove the last history entry, as it was just a placeholder
         this.history.pop()
-        console.log("system says: ", response.choices[0].message.content)
         return response.choices[0].message.content;
     }
 
