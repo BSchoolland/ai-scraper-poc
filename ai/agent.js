@@ -47,6 +47,8 @@ class Agent {
             tools: justTools
         });
 
+        this.history.push({ role: "user", content: taskDescription })
+
         let tool_calls = response.choices[0].message.tool_calls
 
         this.history.push({ role: "assistant", content: response.choices[0].message.content || "", tool_calls: tool_calls })
@@ -81,7 +83,6 @@ class Agent {
                 if (this.report) {
                     break
                 }
-                console.log(this.history)
                 response = await openai.chat.completions.create({
                     model: this.model,
                     messages: this.history,
@@ -98,9 +99,9 @@ class Agent {
     // function to mark a task as complete.  Provides a report on the status of the task
     // useful for when the agent has successfully completed a task
     async task_complete(args, agent) {
-        console.log("Task complete: ", args.report)
         agent.report = args.report
         agent.assigner = null
+        console.log("agent name: ", agent.name, " agent report: ", agent.report, "agent history: ", agent.history)
         return null
     }
     // function to mark a task as failed.  Provides a report on the status of the task

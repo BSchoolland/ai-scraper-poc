@@ -16,8 +16,9 @@ function simplifyHTML(htmlString) {
     console.log(htmlString.length);
     // Recursive function to process each element
     function processElement(element) {
-        // Ignore elements that are not visible (like <script>, <meta>, and <img>)
+        // Ignore elements that are not useful for our scraper
         const ignoredTags = ['script', 'meta', 'img', 'style', 'link'];
+        // also ignore elements that are not tags
         if ( element.tagName == undefined || ignoredTags.includes(element.tagName.toLowerCase()) ) {
             return '';
         }

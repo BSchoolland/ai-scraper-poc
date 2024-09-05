@@ -2,7 +2,7 @@ import Agent from "./agent.js";
 
 const ProjectLead = new Agent('Project Lead', 'gpt-4o-mini', 'You are a capable AI system that leads a team of agents based on the given requirements.  Your job is to create a comprehensive plan for the project, assign tasks to the other agents, and then once the project is complete, review the results and send them to the user.');
 
-const BrowserAgent = new Agent('Browser Agent', 'gpt-4o-mini', 'You are an AI agent that can navigate the web and interact with web pages.  Use the provided tools to gather the requested information and report back to your assigner.');
+const BrowserAgent = new Agent('Browser Agent', 'gpt-4o-mini', 'You are an AI agent that can navigate the web and interact with web pages.  Use the provided tools to perform the task and report back to your assigner.');
 
 const ScraperAgent = new Agent('Scraper Agent', 'gpt-4o-mini', 'You are a web scraping AI agent that can configure a web scraper to collect data from a website.  You should be given clear instructions on the URL to scrape and the css selectors to target.  You focus on creating a scraper that is able to generalize to new pages on the same website.');
 
@@ -29,6 +29,7 @@ const ProjectLeadTools = [
             }
         },
         callback: async (args, agent) => {
+            console.log('assigning task: ', args.task);
             agent.overseeing_agent = true
             const result = await BrowserAgent.doTask(args.task, agent)
             agent.overseeing_agent = false
@@ -176,10 +177,11 @@ const BrowserAgentTools = [
                     "properties": {
                         "function": {
                             "type": "string",
-                            "description": `The JavaScript function you want to evaluate, for example: 
+                            "description": `The JavaScript function you want to evaluate. For example: 
 () => {
     return document.querySelector('title').innerText;
-} `,
+} `
+ ,
                         },
                     },
                     "required": ["function"],
@@ -189,27 +191,6 @@ const BrowserAgentTools = [
         },
         callback: evaluate
     },
-    // {
-    //     tool: {
-    //         "type": "function",
-    //         "function": {
-    //             "name": "click_element",
-    //             "description": "Clicks on the element with the given CSS selector on the current page, allowing you to navigate to a new page or interact with a dynamic element.",
-    //             "parameters": {
-    //                 "type": "object",
-    //                 "properties": {
-    //                     "selector": {
-    //                         "type": "string",
-    //                         "description": "The CSS selector of the element you want to click on.",
-    //                     },
-    //                 },
-    //                 "required": ["selector"],
-    //                 "additionalProperties": false,
-    //             },
-    //         }
-    //     },
-    //     callback: BrowserUtilities.clickElement
-    // }
 ];
 
 BrowserAgent.addTools(BrowserAgentTools);
